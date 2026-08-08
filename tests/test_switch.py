@@ -29,7 +29,9 @@ class FakeSimulation:
 @pytest.fixture
 def coordinator() -> SimpleNamespace:
     """A coordinator double with simulation and metric attributes."""
-    return SimpleNamespace(
+    sim = FakeSimulation()
+
+    ns = SimpleNamespace(
         config_entry=MockConfigEntry(
             domain=DOMAIN,
             data={
@@ -37,12 +39,16 @@ def coordinator() -> SimpleNamespace:
                 "name": "Casa",
             },
         ),
-        simulation=FakeSimulation(),
+        simulation=sim,
         profiles_loaded=2,
         profiles_ready=1,
         sequence_rules_count=3,
         last_training=datetime(2026, 8, 1, 10, 0),
     )
+
+    # _get_simulation() returns the same FakeSimulation on every call
+    ns._get_simulation = lambda: sim  # noqa: SLF001
+    return ns
 
 
 def make_switch(hass, coordinator, entry_id="abc12345") -> PresenceSimulationSwitch:
@@ -152,10 +158,9 @@ async def test_turn_off_stops_simulation(hass, coordinator):
     coordinator.simulation.stop.assert_awaited_once()
 
 
-async def test_turn_on_without_simulation(hass, coordinator):
-    """Without an engine the switch stays off without crashing."""
+async def test_turn_on_creates_simulation_lazily(hass, coordinator):
+    """Even when coordinator.simulation is None, _get_simulation() creates it."""
     coordinator.simulation = None
-    switch = PresenceSimulationSwitch(coordinator, "abc12345", DEFAULT_NAME)
-    switch.hass = hass
+    switch = make_switch(hass, coordinator, "abc12345")
     await switch.async_turn_on()
-    assert switch.is_on is False
+    assert switch.is_on is True

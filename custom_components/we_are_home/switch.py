@@ -111,20 +111,24 @@ class PresenceSimulationSwitch(CoordinatorEntity, SwitchEntity):
     async def async_turn_on(self, **kwargs: Any) -> None:
         """Start the presence simulation."""
         _LOGGER.info("Starting We Are Home simulation")
-        simulation = self.coordinator.simulation if self.coordinator else None
-        if simulation is not None:
-            await simulation.start()
-            self._attr_is_on = True
-            self.async_write_ha_state()
+        if self.coordinator is None:
+            _LOGGER.error("No coordinator available")
+            return
+        simulation = self.coordinator._get_simulation()  # noqa: SLF001
+        await simulation.start()
+        self._attr_is_on = True
+        self.async_write_ha_state()
 
     async def async_turn_off(self, **kwargs: Any) -> None:
         """Stop the presence simulation."""
         _LOGGER.info("Stopping We Are Home simulation")
-        simulation = self.coordinator.simulation if self.coordinator else None
-        if simulation is not None:
-            await simulation.stop()
-            self._attr_is_on = False
-            self.async_write_ha_state()
+        if self.coordinator is None:
+            _LOGGER.error("No coordinator available")
+            return
+        simulation = self.coordinator._get_simulation()  # noqa: SLF001
+        await simulation.stop()
+        self._attr_is_on = False
+        self.async_write_ha_state()
 
     @property
     def available(self) -> bool:
