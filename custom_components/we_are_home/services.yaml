@@ -65,7 +65,7 @@ train:
         boolean:
     days_back:
       name: Days Back
-      description: How many days of history to use (default: all available).
+      description: "How many days of history to use (default: all available)."
       required: false
       example: 30
       selector:
