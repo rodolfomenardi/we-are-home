@@ -1,0 +1,54 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "We Are Home",
+        "description": "Configure o simulador de presença com aprendizado de padrões",
+        "data": {
+          "name": "Nome da Instância",
+          "entities": "Entidades para Monitorar",
+          "learning_interval": "Intervalo de Aprendizado (minutos)",
+          "simulation_interval": "Intervalo de Simulação (segundos)",
+          "restore_states": "Restaurar Estados ao Parar",
+          "min_confidence": "Confiança Mínima",
+          "sequence_window": "Janela de Descoberta de Sequências (minutos)",
+          "sequence_min_occurrences": "Ocorrências Mínimas para Sequência",
+          "boost_factor": "Fator de Boost para Sequências",
+          "random_seed": "Semente Aleatória (opcional)"
+        },
+        "data_description": {
+          "entities": "Selecione as entidades para aprender padrões e controlar durante a simulação",
+          "learning_interval": "Frequência com que o sistema atualiza os perfis com novos dados do histórico",
+          "simulation_interval": "Frequência com que o motor de simulação verifica e ajusta os estados",
+          "min_confidence": "Entidades abaixo deste nível de confiança não serão usadas na simulação",
+          "sequence_window": "Tempo máximo entre eventos para considerá-los parte de uma sequência"
+        }
+      }
+    },
+    "error": {
+      "no_entities": "Pelo menos uma entidade deve ser selecionada",
+      "entity_not_found": "Entidade não encontrada no registro do Home Assistant"
+    },
+    "abort": {
+      "already_configured": "Esta instância já está configurada"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Opções do We Are Home",
+        "description": "Modifique a configuração desta instância de simulação",
+        "data": {
+          "entities": "Entidades para Monitorar",
+          "learning_interval": "Intervalo de Aprendizado (minutos)",
+          "simulation_interval": "Intervalo de Simulação (segundos)",
+          "restore_states": "Restaurar Estados ao Parar",
+          "min_confidence": "Confiança Mínima",
+          "sequence_window": "Janela de Descoberta de Sequências (minutos)",
+          "sequence_min_occurrences": "Ocorrências Mínimas para Sequência",
+          "boost_factor": "Fator de Boost para Sequências"
+        }
+      }
+    }
+  }
+}
