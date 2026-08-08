@@ -1,0 +1,54 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "We Are Home",
+        "description": "Configure presence simulation with learned behavior patterns",
+        "data": {
+          "name": "Instance Name",
+          "entities": "Entities to Monitor",
+          "learning_interval": "Learning Interval (minutes)",
+          "simulation_interval": "Simulation Tick (seconds)",
+          "restore_states": "Restore States on Stop",
+          "min_confidence": "Minimum Confidence Threshold",
+          "sequence_window": "Sequence Discovery Window (minutes)",
+          "sequence_min_occurrences": "Minimum Sequence Occurrences",
+          "boost_factor": "Sequence Boost Factor",
+          "random_seed": "Random Seed (optional)"
+        },
+        "data_description": {
+          "entities": "Select entities to learn patterns from and control during simulation",
+          "learning_interval": "How often the system updates learned profiles from new history data",
+          "simulation_interval": "How often the simulation engine checks and adjusts device states",
+          "min_confidence": "Entities below this confidence level will not be used in simulation",
+          "sequence_window": "Maximum time between events to consider them part of a sequence"
+        }
+      }
+    },
+    "error": {
+      "no_entities": "At least one entity must be selected",
+      "entity_not_found": "Entity not found in Home Assistant registry"
+    },
+    "abort": {
+      "already_configured": "This instance is already configured"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "We Are Home Options",
+        "description": "Modify configuration for this simulation instance",
+        "data": {
+          "entities": "Entities to Monitor",
+          "learning_interval": "Learning Interval (minutes)",
+          "simulation_interval": "Simulation Tick (seconds)",
+          "restore_states": "Restore States on Stop",
+          "min_confidence": "Minimum Confidence Threshold",
+          "sequence_window": "Sequence Discovery Window (minutes)",
+          "sequence_min_occurrences": "Minimum Sequence Occurrences",
+          "boost_factor": "Sequence Boost Factor"
+        }
+      }
+    }
+  }
+}
