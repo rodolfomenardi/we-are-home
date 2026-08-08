@@ -1,6 +1,6 @@
 # Services for the We Are Home integration
 
-we_are_home.start:
+start:
   name: Start Simulation
   description: Start the presence simulation.
   fields:
@@ -17,7 +17,7 @@ we_are_home.start:
       name: Entities
       description: Override which entities to simulate (uses config default if omitted).
       required: false
-      example: ["light.sala", "light.cozinha"]
+      example: "light.sala, light.cozinha"
       selector:
         entity:
           multiple: true
@@ -29,7 +29,7 @@ we_are_home.start:
       selector:
         boolean:
 
-we_are_home.stop:
+stop:
   name: Stop Simulation
   description: Stop the presence simulation.
   fields:
@@ -43,7 +43,7 @@ we_are_home.stop:
           integration: we_are_home
           domain: switch
 
-we_are_home.train:
+train:
   name: Train Profiles
   description: Force a full or partial re-training of learned profiles.
   fields:
@@ -51,7 +51,7 @@ we_are_home.train:
       name: Entities
       description: Specific entities to retrain (all if omitted).
       required: false
-      example: ["light.sala"]
+      example: "light.sala"
       selector:
         entity:
           multiple: true
@@ -73,7 +73,7 @@ we_are_home.train:
           min: 1
           max: 365
 
-we_are_home.get_profile:
+get_profile:
   name: Get Profile
   description: Retrieve the learned profile for an entity.
   fields:
@@ -85,7 +85,7 @@ we_are_home.get_profile:
       selector:
         entity:
 
-we_are_home.list_rules:
+list_rules:
   name: List Rules
   description: List all discovered sequence rules.
   fields:

@@ -1,13 +1,13 @@
 {
   "domain": "we_are_home",
   "name": "We Are Home",
-  "version": "0.1.0",
   "codeowners": ["@rodolfomenardi"],
   "config_flow": true,
+  "dependencies": ["recorder", "history"],
   "documentation": "https://github.com/rodolfomenardi/we-are-home",
-  "issue_tracker": "https://github.com/rodolfomenardi/we-are-home/issues",
-  "iot_class": "calculated",
   "integration_type": "hub",
+  "iot_class": "calculated",
+  "issue_tracker": "https://github.com/rodolfomenardi/we-are-home/issues",
   "requirements": [],
-  "dependencies": ["recorder", "history"]
+  "version": "0.1.0"
 }
