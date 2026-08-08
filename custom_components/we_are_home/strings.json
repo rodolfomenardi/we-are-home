@@ -1,0 +1,25 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "We Are Home",
+        "description": "Configure presence simulation with learned behavior patterns"
+      }
+    },
+    "error": {
+      "no_entities": "At least one entity must be selected",
+      "entity_not_found": "Entity not found in Home Assistant registry"
+    },
+    "abort": {
+      "already_configured": "This instance is already configured"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "We Are Home Options",
+        "description": "Modify configuration for this simulation instance"
+      }
+    }
+  }
+}

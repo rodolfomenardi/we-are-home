@@ -1,0 +1,109 @@
+# Services for the We Are Home integration
+
+start:
+  name: Start Simulation
+  description: Start the presence simulation.
+  fields:
+    switch_id:
+      name: Switch ID
+      description: Which simulation switch to start (required if multiple instances).
+      required: false
+      example: "switch.we_are_home"
+      selector:
+        entity:
+          integration: we_are_home
+          domain: switch
+    entity_id:
+      name: Entities
+      description: Override which entities to simulate (uses config default if omitted).
+      required: false
+      example: "light.sala, light.cozinha"
+      selector:
+        entity:
+          multiple: true
+    restore_states:
+      name: Restore States
+      description: Override whether to restore states on stop.
+      required: false
+      example: true
+      selector:
+        boolean:
+
+stop:
+  name: Stop Simulation
+  description: Stop the presence simulation.
+  fields:
+    switch_id:
+      name: Switch ID
+      description: Which simulation switch to stop.
+      required: false
+      example: "switch.we_are_home"
+      selector:
+        entity:
+          integration: we_are_home
+          domain: switch
+
+train:
+  name: Train Profiles
+  description: Force a full or partial re-training of learned profiles.
+  fields:
+    entity_id:
+      name: Entities
+      description: Specific entities to retrain (all if omitted).
+      required: false
+      example: "light.sala"
+      selector:
+        entity:
+          multiple: true
+    full_reset:
+      name: Full Reset
+      description: If true, discard existing profiles and relearn from scratch.
+      required: false
+      default: false
+      example: false
+      selector:
+        boolean:
+    days_back:
+      name: Days Back
+      description: "How many days of history to use (default: all available)."
+      required: false
+      example: 30
+      selector:
+        number:
+          min: 1
+          max: 365
+
+get_profile:
+  name: Get Profile
+  description: Retrieve the learned profile for an entity.
+  fields:
+    entity_id:
+      name: Entity
+      description: Entity to retrieve profile for.
+      required: true
+      example: "light.sala"
+      selector:
+        entity:
+
+list_rules:
+  name: List Rules
+  description: List all discovered sequence rules.
+  fields:
+    entity_id:
+      name: Entity
+      description: Filter rules involving this entity (all if omitted).
+      required: false
+      example: "light.sala"
+      selector:
+        entity:
+    min_confidence:
+      name: Minimum Confidence
+      description: Filter by minimum confidence level.
+      required: false
+      default: 0.5
+      example: 0.7
+      selector:
+        number:
+          min: 0.0
+          max: 1.0
+          step: 0.05
