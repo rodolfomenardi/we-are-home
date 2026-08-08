@@ -105,7 +105,7 @@ def _build_data_schema(
             vol.Optional(
                 CONF_RANDOM_SEED,
                 default=defaults.get(CONF_RANDOM_SEED, DEFAULT_RANDOM_SEED),
-            ): vol.Any(int, None, vol.Coerce(int)),
+            ): vol.Maybe(int),
         }
     )
 
