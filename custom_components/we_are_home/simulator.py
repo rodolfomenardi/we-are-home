@@ -10,7 +10,7 @@ from __future__ import annotations
 import logging
 import random
 from datetime import UTC, datetime, timedelta
-from typing import Any
+from typing import Any, Callable
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import (
@@ -19,6 +19,7 @@ from homeassistant.const import (
 )
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ServiceNotFound
+from homeassistant.helpers.event import async_track_time_interval
 
 from .const import (
     DEFAULT_BOOST_FACTOR,
@@ -55,6 +56,7 @@ class SimulationEngine:
         self._commands_sent: int = 0
         self._grace_period: dict[str, datetime] = {}
         self._running = False
+        self._cancel_tick: Callable[[], None] | None = None
 
     @property
     def commands_sent(self) -> int:
@@ -87,9 +89,21 @@ class SimulationEngine:
         self._commands_sent = 0
         self._running = True
 
+        # Schedule periodic tick
+        simulation_interval = self.config_entry.data.get(
+            "simulation_interval", DEFAULT_SIMULATION_INTERVAL
+        )
+        self._cancel_tick = async_track_time_interval(
+            self.hass,
+            self._async_tick,
+            timedelta(seconds=simulation_interval),
+        )
+
         _LOGGER.info(
-            "Simulation started with %d entities; pre-states captured",
+            "Simulation started with %d entities; pre-states captured, "
+            "tick interval %ds",
             len(entities),
+            simulation_interval,
         )
 
     async def stop(self) -> None:
@@ -97,6 +111,11 @@ class SimulationEngine:
 
         Optionally restores pre-simulation states if configured.
         """
+        # Cancel the scheduled tick loop
+        if self._cancel_tick is not None:
+            self._cancel_tick()
+            self._cancel_tick = None
+
         self._running = False
         self.active = False
         self._boost_manager.clear()
@@ -114,6 +133,14 @@ class SimulationEngine:
             _LOGGER.info("Simulation stopped (no state restoration)")
 
         self._pre_simulation_states.clear()
+
+    async def _async_tick(self, *_: Any) -> None:
+        """Tick callback for async_track_time_interval.
+
+        Wraps tick() to discard the datetime argument passed by the
+        interval tracker.
+        """
+        await self.tick()
 
     async def tick(self) -> int:
         """Execute one simulation tick.

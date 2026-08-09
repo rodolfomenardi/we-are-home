@@ -176,6 +176,42 @@ async def test_stop_with_no_captured_states():
 
 
 # ---------------------------------------------------------------------------
+# _async_tick
+# ---------------------------------------------------------------------------
+
+
+async def test_async_tick_delegates_to_tick():
+    """_async_tick wrapper calls tick() discarding interval args."""
+    hass = make_hass({"light.sala": "off"})
+    profiles = {"light.sala": profile_dict(p_on=1.0)}
+    engine, _ = make_engine(hass, make_entry(), profiles)
+    await engine.start()
+    # _async_tick receives the datetime from async_track_time_interval
+    # and must discard it before calling tick()
+    await engine._async_tick(datetime.now())  # noqa: SLF001
+    assert engine.commands_sent == 1
+
+
+async def test_stop_cancels_tick_interval():
+    """stop() cancels the scheduled tick interval if active."""
+    hass = make_hass({"light.sala": "on"})
+    engine, _ = make_engine(hass, make_entry())
+    await engine.start()
+    assert engine._cancel_tick is not None  # noqa: SLF001
+    await engine.stop()
+    assert engine._cancel_tick is None  # noqa: SLF001
+
+
+async def test_stop_handles_missing_cancel_tick():
+    """stop() handles no cancel_tick gracefully (e.g., no-entities start)."""
+    hass = make_hass()
+    engine, _ = make_engine(hass, make_entry(entities=[]))
+    await engine.start()  # returns early, no cancel_tick set
+    assert engine._cancel_tick is None  # noqa: SLF001
+    await engine.stop()  # must not raise
+
+
+# ---------------------------------------------------------------------------
 # tick
 # ---------------------------------------------------------------------------
 
