@@ -144,6 +144,12 @@ async def get_multi_entity_history(
     if not entity_ids:
         return {}
 
+    _LOGGER.debug(
+        "Fetching multi-entity history: %d entities, days_back=%s",
+        len(entity_ids),
+        days_back,
+    )
+
     # Build time window
     start_time: datetime | None = None
     if days_back is not None and days_back > 0:
@@ -194,7 +200,14 @@ async def get_multi_entity_history(
         return result
 
     try:
-        return await hass.async_add_executor_job(_fetch)
+        result = await hass.async_add_executor_job(_fetch)
+        total = sum(len(v) for v in result.values())
+        _LOGGER.debug(
+            "History fetch complete | events=%d entities_with_data=%d",
+            total,
+            len([k for k, v in result.items() if v]),
+        )
+        return result
     except Exception as exc:
         _LOGGER.error(
             "Error fetching entity history: %s. Returning empty results.", exc
@@ -265,6 +278,12 @@ async def get_recent_state_changes(
     """
     if not entity_ids:
         return {}
+
+    _LOGGER.debug(
+        "Fetching recent changes: %d entities since %s",
+        len(entity_ids),
+        since.isoformat(),
+    )
 
     def _fetch() -> dict[str, list[dict]]:
         result: dict[str, list[dict]] = {}

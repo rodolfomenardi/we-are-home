@@ -54,15 +54,22 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     entry.async_on_unload(entry.add_update_listener(async_reload_entry))
 
+    entities = entry.data.get("entities", [])
+    learning_interval = entry.data.get("learning_interval", 60)
+    sim_interval = entry.data.get("simulation_interval", 30)
     _LOGGER.info(
-        "We Are Home: %d entities configured for learning and simulation",
-        len(entry.data.get("entities", [])),
+        "We Are Home setup complete | entities=%d learning_every=%dm "
+        "simulation_tick=%ds",
+        len(entities),
+        learning_interval,
+        sim_interval,
     )
     return True
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a config entry."""
+    _LOGGER.info("Unloading We Are Home entry %s", entry.entry_id[:8])
     unload_ok = await hass.config_entries.async_unload_platforms(
         entry, PLATFORMS
     )
@@ -73,6 +80,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         if coordinator is not None:
             await coordinator.async_shutdown()
 
+    _LOGGER.info("We Are Home unloaded | success=%s", unload_ok)
     return unload_ok
 
 

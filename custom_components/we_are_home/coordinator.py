@@ -76,14 +76,31 @@ class WeAreHomeCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         if not entities:
             return {"profiles_loaded": 0, "profiles_ready": 0}
 
+        cycle_start = datetime.now()
+        is_first_run = not self._profiles
+
         try:
             # Get recent history since last update
             since = (
                 self._last_learning
                 or datetime(2000, 1, 1)
             )
+            _LOGGER.info(
+                "Learning cycle start | first_run=%s since=%s entities=%d",
+                is_first_run,
+                since.isoformat() if since.year > 2000 else "epoch",
+                len(entities),
+            )
             new_history = await history_reader.get_recent_state_changes(
                 self.hass, entities, since
+            )
+            history_events = sum(
+                len(changes) for changes in new_history.values()
+            )
+            _LOGGER.debug(
+                "History fetched | events=%d entities_with_changes=%d",
+                history_events,
+                len([e for e, ch in new_history.items() if ch]),
             )
 
             # Initial learning or incremental update
@@ -228,6 +245,16 @@ class WeAreHomeCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 )
             )
             self.sequence_rules_count = len(self._sequence_rules)
+
+            duration = (datetime.now() - cycle_start).total_seconds()
+            _LOGGER.info(
+                "Learning cycle complete | profiles_loaded=%d profiles_ready=%d "
+                "rules=%d duration=%.1fs",
+                self.profiles_loaded,
+                self.profiles_ready,
+                self.sequence_rules_count,
+                duration,
+            )
 
             return {
                 "profiles_loaded": self.profiles_loaded,

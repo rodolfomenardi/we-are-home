@@ -172,6 +172,15 @@ class SimulationEngine:
         # Load profiles
         profiles = getattr(self.coordinator, "_profiles", {})
 
+        active_boost_count = len(self._boost_manager.active_boosts)
+        _LOGGER.debug(
+            "Tick | slot=%d/%d day=%s boosts_active=%d",
+            slot,
+            SLOTS_PER_DAY,
+            day_group,
+            active_boost_count,
+        )
+
         for entity_id in entities:
             entity_profiles = profiles.get(entity_id, [])
             if not entity_profiles:
@@ -222,6 +231,13 @@ class SimulationEngine:
             target_on = rand_val < p_clamped
 
             if target_on and not is_currently_on:
+                _LOGGER.info(
+                    "Simulation: turning ON %s (p_on=%.2f boost=%.1fx rand=%.2f)",
+                    entity_id,
+                    p_on / boost_mult if boost_mult else p_on,
+                    boost_mult,
+                    rand_val,
+                )
                 await self._send_command(entity_id, SERVICE_TURN_ON)
                 self._boost_manager.trigger(
                     entity_id,
@@ -233,10 +249,23 @@ class SimulationEngine:
                 commands_sent += 1
 
             elif not target_on and is_currently_on:
+                _LOGGER.info(
+                    "Simulation: turning OFF %s (p_on=%.2f boost=%.1fx rand=%.2f)",
+                    entity_id,
+                    p_on / boost_mult if boost_mult else p_on,
+                    boost_mult,
+                    rand_val,
+                )
                 await self._send_command(entity_id, SERVICE_TURN_OFF)
                 commands_sent += 1
 
         self._commands_sent += commands_sent
+        if commands_sent > 0:
+            _LOGGER.info(
+                "Tick sent %d command(s) | total_commands=%d",
+                commands_sent,
+                self._commands_sent,
+            )
         return commands_sent
 
     async def _send_command(

@@ -132,9 +132,11 @@ async def _handle_start(
     Supports multi-instance via switch_id parameter.
     """
     switch_id = call.data.get("switch_id")
+    _LOGGER.info("Service call: start | switch_id=%s", switch_id)
     coordinator = _resolve_coordinator(hass, switch_id)
 
     if coordinator is None:
+        _LOGGER.warning("Service start: no coordinator found")
         return {"success": False, "error": "No configured instance found"}
 
     simulation = coordinator._get_simulation()  # noqa: SLF001
@@ -144,10 +146,12 @@ async def _handle_start(
     restore_override = call.data.get("restore_states")
     if entity_override is not None:
         simulation._entity_override = entity_override  # noqa: SLF001
+        _LOGGER.debug("Service start: entity override=%s", entity_override)
     if restore_override is not None:
         simulation._restore_override = restore_override  # noqa: SLF001
 
     await simulation.start()
+    _LOGGER.info("Service start: simulation started")
 
     return {
         "success": True,
@@ -160,14 +164,17 @@ async def _handle_stop(
 ) -> dict[str, Any]:
     """Handle we_are_home.stop service call."""
     switch_id = call.data.get("switch_id")
+    _LOGGER.info("Service call: stop | switch_id=%s", switch_id)
     coordinator = _resolve_coordinator(hass, switch_id)
 
     if coordinator is None:
+        _LOGGER.warning("Service stop: no coordinator found")
         return {"success": False, "error": "No configured instance found"}
 
     simulation = coordinator._get_simulation()  # noqa: SLF001
     restored_count = len(simulation._pre_simulation_states)  # noqa: SLF001
     await simulation.stop()
+    _LOGGER.info("Service stop: simulation stopped | restored=%d", restored_count)
 
     return {"success": True, "restored_entities": restored_count}
 
@@ -189,6 +196,13 @@ async def _handle_train(
     days_back = call.data.get("days_back")
     target_entities = call.data.get("entity_id") or coordinator.config_entry.data.get(
         "entities", []
+    )
+
+    _LOGGER.info(
+        "Service call: train | entities=%d full_reset=%s days_back=%s",
+        len(target_entities),
+        full_reset,
+        days_back,
     )
 
     if full_reset:
@@ -250,6 +264,13 @@ async def _handle_train(
     )
     coordinator.last_training = datetime.now()  # noqa: SLF001
 
+    _LOGGER.info(
+        "Service train complete | entities=%d profiles=%d rules=%d",
+        len(target_entities),
+        coordinator.profiles_loaded,
+        coordinator.sequence_rules_count,
+    )
+
     return {
         "success": True,
         "entities_processed": len(target_entities),
@@ -271,6 +292,7 @@ async def _handle_get_profile(
     Returns learned profile with day groups, peak hours, and confidence.
     """
     entity_id = call.data["entity_id"]
+    _LOGGER.debug("Service call: get_profile | entity=%s", entity_id)
 
     profile_data = await storage.load_profile(hass, entity_id)
     if profile_data is None:
@@ -348,6 +370,11 @@ async def _handle_list_rules(
     """
     entity_filter = call.data.get("entity_id")
     min_conf = call.data.get("min_confidence", 0.0)
+    _LOGGER.debug(
+        "Service call: list_rules | entity=%s min_conf=%.2f",
+        entity_filter,
+        min_conf,
+    )
 
     rules = await storage.load_sequence_rules(hass)
 
