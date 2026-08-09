@@ -20,6 +20,23 @@ from .const import SUPPORTED_DOMAINS
 
 _LOGGER = logging.getLogger(__name__)
 
+
+async def _run_recorder_query(hass: HomeAssistant, fn: callable) -> Any:
+    """Run a recorder query on the recorder's executor, with fallback.
+
+    Home Assistant recommends recorder.get_instance(hass).async_add_executor_job()
+    for database operations to avoid HA core warnings. Falls back to the generic
+    hass.async_add_executor_job() when the recorder instance isn't available
+    (e.g. in tests with mocked recorder).
+    """
+    try:
+        rec = recorder.get_instance(hass)
+        if hasattr(rec, "async_add_executor_job"):
+            return await rec.async_add_executor_job(fn)
+    except (AttributeError, KeyError, RuntimeError):
+        pass
+    return await hass.async_add_executor_job(fn)
+
 # Minimum state duration (seconds) to consider an entity state meaningful.
 # Filters out transient motion-sensor events and momentary flickers.
 _MIN_STATE_DURATION = 5
@@ -200,7 +217,7 @@ async def get_multi_entity_history(
         return result
 
     try:
-        result = await hass.async_add_executor_job(_fetch)
+        result = await _run_recorder_query(hass, _fetch)
         total = sum(len(v) for v in result.values())
         _LOGGER.debug(
             "History fetch complete | events=%d entities_with_data=%d",
@@ -256,7 +273,7 @@ async def get_entity_states_at_time(
 
         return result
 
-    return await hass.async_add_executor_job(_fetch)
+    return await _run_recorder_query(hass, _fetch)
 
 
 async def get_recent_state_changes(
@@ -318,7 +335,7 @@ async def get_recent_state_changes(
 
         return result
 
-    return await hass.async_add_executor_job(_fetch)
+    return await _run_recorder_query(hass, _fetch)
 
 
 async def get_recorder_info(hass: HomeAssistant) -> dict:
@@ -351,7 +368,7 @@ async def get_recorder_info(hass: HomeAssistant) -> dict:
         return info
 
     try:
-        return await hass.async_add_executor_job(_fetch)
+        return await _run_recorder_query(hass, _fetch)
     except Exception as exc:
         _LOGGER.warning("Failed to get recorder info: %s", exc)
         return {"engine": "unknown", "error": str(exc)}
