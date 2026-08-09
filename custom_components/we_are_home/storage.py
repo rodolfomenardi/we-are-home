@@ -124,7 +124,7 @@ async def save_profile(hass: HomeAssistant, profile: dict) -> None:
     """Save a profile to storage."""
     entity_id = profile.get("entity_id", "unknown")
     filename = _sanitize_filename(entity_id)
-    _LOGGER.debug("Saving profile: %s", entity_id)
+    _LOGGER.info("Saving profile: %s", entity_id)
     await _write_json(hass, f"profiles/{filename}", profile)
 
 
@@ -156,7 +156,7 @@ async def load_all_profiles(hass: HomeAssistant) -> dict[str, dict]:
         return result
 
     result = await hass.async_add_executor_job(_load_all)
-    _LOGGER.debug("Loaded %d profiles from storage", len(result))
+    _LOGGER.info("Loaded %d profiles from storage", len(result))
     return result
 
 
@@ -179,7 +179,7 @@ async def save_sequence_rules(
     hass: HomeAssistant, rules: list[dict]
 ) -> None:
     """Save sequence rules to storage/sequence_rules.json."""
-    _LOGGER.debug("Saving %d sequence rules to storage", len(rules))
+    _LOGGER.info("Saving %d sequence rules to storage", len(rules))
     await _write_json(
         hass,
         "sequence_rules.json",

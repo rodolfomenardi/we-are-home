@@ -116,7 +116,7 @@ async def async_register_services(hass: HomeAssistant) -> None:
         _bind(_handle_list_rules),
         schema=LIST_RULES_SCHEMA,
     )
-    _LOGGER.debug("We Are Home services registered")
+    _LOGGER.info("We Are Home services registered")
 
 
 # ---------------------------------------------------------------------------
@@ -146,7 +146,7 @@ async def _handle_start(
     restore_override = call.data.get("restore_states")
     if entity_override is not None:
         simulation._entity_override = entity_override  # noqa: SLF001
-        _LOGGER.debug("Service start: entity override=%s", entity_override)
+        _LOGGER.info("Service start: entity override=%s", entity_override)
     if restore_override is not None:
         simulation._restore_override = restore_override  # noqa: SLF001
 
@@ -292,7 +292,7 @@ async def _handle_get_profile(
     Returns learned profile with day groups, peak hours, and confidence.
     """
     entity_id = call.data["entity_id"]
-    _LOGGER.debug("Service call: get_profile | entity=%s", entity_id)
+    _LOGGER.info("Service call: get_profile | entity=%s", entity_id)
 
     profile_data = await storage.load_profile(hass, entity_id)
     if profile_data is None:
@@ -370,7 +370,7 @@ async def _handle_list_rules(
     """
     entity_filter = call.data.get("entity_id")
     min_conf = call.data.get("min_confidence", 0.0)
-    _LOGGER.debug(
+    _LOGGER.info(
         "Service call: list_rules | entity=%s min_conf=%.2f",
         entity_filter,
         min_conf,

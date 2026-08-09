@@ -173,7 +173,7 @@ class SimulationEngine:
         profiles = getattr(self.coordinator, "_profiles", {})
 
         active_boost_count = len(self._boost_manager.active_boosts)
-        _LOGGER.debug(
+        _LOGGER.info(
             "Tick | slot=%d/%d day=%s boosts_active=%d",
             slot,
             SLOTS_PER_DAY,
@@ -286,7 +286,7 @@ class SimulationEngine:
                 blocking=False,
             )
         except (ServiceNotFound, Exception) as exc:
-            _LOGGER.debug(
+            _LOGGER.info(
                 "Failed to %s %s: %s", service, entity_id, exc
             )
 
@@ -466,7 +466,7 @@ async def _restore_entity_states(
                 blocking=False,
             )
         except (ServiceNotFound, Exception) as exc:
-            _LOGGER.debug(
+            _LOGGER.info(
                 "Failed to restore %s to %s: %s",
                 entity_id,
                 target_state,

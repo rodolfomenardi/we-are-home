@@ -161,7 +161,7 @@ async def get_multi_entity_history(
     if not entity_ids:
         return {}
 
-    _LOGGER.debug(
+    _LOGGER.info(
         "Fetching multi-entity history: %d entities, days_back=%s",
         len(entity_ids),
         days_back,
@@ -219,7 +219,7 @@ async def get_multi_entity_history(
     try:
         result = await _run_recorder_query(hass, _fetch)
         total = sum(len(v) for v in result.values())
-        _LOGGER.debug(
+        _LOGGER.info(
             "History fetch complete | events=%d entities_with_data=%d",
             total,
             len([k for k, v in result.items() if v]),
@@ -296,7 +296,7 @@ async def get_recent_state_changes(
     if not entity_ids:
         return {}
 
-    _LOGGER.debug(
+    _LOGGER.info(
         "Fetching recent changes: %d entities since %s",
         len(entity_ids),
         since.isoformat(),

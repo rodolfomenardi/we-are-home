@@ -125,7 +125,7 @@ def build_time_profiles(
         ]
 
         if not changes:
-            _LOGGER.debug(
+            _LOGGER.info(
                 "%s: no history data, profiles will be COLD", entity_id
             )
             result[entity_id] = profiles
@@ -310,7 +310,7 @@ def auto_detect_day_groups(
             final_profiles = [final_weekday, final_weekend]
 
         merged[entity_id] = final_profiles
-        _LOGGER.debug(
+        _LOGGER.info(
             "%s: day groups → %s",
             entity_id,
             [p.day_group for p in final_profiles],
