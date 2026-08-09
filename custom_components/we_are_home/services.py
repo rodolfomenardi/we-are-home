@@ -296,6 +296,7 @@ async def _handle_get_profile(
 
     profile_data = await storage.load_profile(hass, entity_id)
     if profile_data is None:
+        _LOGGER.info("Service get_profile: entity=%s | NOT FOUND", entity_id)
         return {"entity_id": entity_id, "error": "No profile found"}
 
     profiles = profile_data.get("profiles", [profile_data])
@@ -349,7 +350,7 @@ async def _handle_get_profile(
         if r.get("target_entity") == entity_id
     ]
 
-    return {
+    result = {
         "entity_id": entity_id,
         "domain": entity_id.split(".", 1)[0],
         "confidence": round(max_confidence, 3),
@@ -359,6 +360,23 @@ async def _handle_get_profile(
         "total_observations": total_observations,
         "last_updated": profile_data.get("last_updated"),
     }
+
+    peak_summary = " | ".join(
+        f"{dg}: {data['peak_hours']}"
+        for dg, data in day_groups.items()
+    ) if day_groups else "no peaks"
+    _LOGGER.info(
+        "Service get_profile: entity=%s | confidence=%.2f observations=%d "
+        "rules_src=%d rules_tgt=%d | %s",
+        entity_id,
+        max_confidence,
+        total_observations,
+        len(as_source),
+        len(as_target),
+        peak_summary,
+    )
+
+    return result
 
 
 async def _handle_list_rules(
@@ -406,6 +424,11 @@ async def _handle_list_rules(
             }
         )
 
+    _LOGGER.info(
+        "Service list_rules: found=%d filtered=%d",
+        len(rules),
+        len(filtered),
+    )
     return {"rules": filtered, "total": len(filtered)}
 
 
