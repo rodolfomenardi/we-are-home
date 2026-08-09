@@ -77,34 +77,43 @@ LIST_RULES_SCHEMA = vol.Schema(
 
 async def async_register_services(hass: HomeAssistant) -> None:
     """Register all We Are Home services."""
+    # Wrap handlers so hass is captured by closure.
+    # HA calls service handlers as handler(call) with a single ServiceCall
+    # argument, not handler(hass, call).
+
+    def _bind(func):
+        async def _wrapper(call: ServiceCall):
+            return await func(hass, call)
+        return _wrapper
+
     hass.services.async_register(
         DOMAIN,
         SERVICE_START,
-        _handle_start,
+        _bind(_handle_start),
         schema=START_SCHEMA,
     )
     hass.services.async_register(
         DOMAIN,
         SERVICE_STOP,
-        _handle_stop,
+        _bind(_handle_stop),
         schema=STOP_SCHEMA,
     )
     hass.services.async_register(
         DOMAIN,
         SERVICE_TRAIN,
-        _handle_train,
+        _bind(_handle_train),
         schema=TRAIN_SCHEMA,
     )
     hass.services.async_register(
         DOMAIN,
         SERVICE_GET_PROFILE,
-        _handle_get_profile,
+        _bind(_handle_get_profile),
         schema=GET_PROFILE_SCHEMA,
     )
     hass.services.async_register(
         DOMAIN,
         SERVICE_LIST_RULES,
-        _handle_list_rules,
+        _bind(_handle_list_rules),
         schema=LIST_RULES_SCHEMA,
     )
     _LOGGER.debug("We Are Home services registered")
