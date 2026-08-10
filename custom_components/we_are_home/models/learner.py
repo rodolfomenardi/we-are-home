@@ -125,7 +125,7 @@ def build_time_profiles(
         ]
 
         if not changes:
-            _LOGGER.info(
+            _LOGGER.debug(
                 "%s: no history data, profiles will be COLD", entity_id
             )
             result[entity_id] = profiles
@@ -165,7 +165,7 @@ def build_time_profiles(
         # Check for insufficient history
         total_obs = sum(p.total_observations for p in profiles)
         if total_obs < len(ALL_DAYS) * 3:  # fewer than ~3 obs per day
-            _LOGGER.info(
+            _LOGGER.debug(
                 "%s: insufficient history (%d observations). "
                 "Profiles marked COLD; more data needed for simulation.",
                 entity_id,
@@ -310,7 +310,7 @@ def auto_detect_day_groups(
             final_profiles = [final_weekday, final_weekend]
 
         merged[entity_id] = final_profiles
-        _LOGGER.info(
+        _LOGGER.debug(
             "%s: day groups → %s",
             entity_id,
             [p.day_group for p in final_profiles],

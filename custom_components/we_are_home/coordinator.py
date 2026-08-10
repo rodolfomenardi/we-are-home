@@ -97,7 +97,7 @@ class WeAreHomeCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             history_events = sum(
                 len(changes) for changes in new_history.values()
             )
-            _LOGGER.info(
+            _LOGGER.debug(
                 "History fetched | events=%d entities_with_changes=%d",
                 history_events,
                 len([e for e, ch in new_history.items() if ch]),

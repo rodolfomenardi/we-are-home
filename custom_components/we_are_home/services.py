@@ -116,7 +116,7 @@ async def async_register_services(hass: HomeAssistant) -> None:
         _bind(_handle_list_rules),
         schema=LIST_RULES_SCHEMA,
     )
-    _LOGGER.info("We Are Home services registered")
+    _LOGGER.debug("We Are Home services registered")
 
 
 # ---------------------------------------------------------------------------
@@ -146,7 +146,7 @@ async def _handle_start(
     restore_override = call.data.get("restore_states")
     if entity_override is not None:
         simulation._entity_override = entity_override  # noqa: SLF001
-        _LOGGER.info("Service start: entity override=%s", entity_override)
+        _LOGGER.debug("Service start: entity override=%s", entity_override)
     if restore_override is not None:
         simulation._restore_override = restore_override  # noqa: SLF001
 
@@ -388,7 +388,7 @@ async def _handle_list_rules(
     """
     entity_filter = call.data.get("entity_id")
     min_conf = call.data.get("min_confidence", 0.0)
-    _LOGGER.info(
+    _LOGGER.debug(
         "Service call: list_rules | entity=%s min_conf=%.2f",
         entity_filter,
         min_conf,
