@@ -131,6 +131,61 @@ class WeAreHomeCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                         len(stored_profiles),
                         len(stored_rules),
                     )
+
+                    # Detect entities added since last config (they have
+                    # no stored profiles yet).  Build initial profiles
+                    # from full recorder history so they are usable
+                    # immediately instead of waiting for the incremental
+                    # update to accumulate enough observations.
+                    missing = [
+                        e
+                        for e in entities
+                        if e not in self._profiles
+                    ]
+                    if missing:
+                        _LOGGER.info(
+                            "New entities without stored profiles: %s. "
+                            "Building initial profiles from history.",
+                            ", ".join(missing),
+                        )
+                        new_history = (
+                            await history_reader.get_multi_entity_history(
+                                self.hass, missing
+                            )
+                        )
+                        new_profiles = build_time_profiles(
+                            new_history, missing
+                        )
+                        new_profiles = auto_detect_day_groups(
+                            new_profiles
+                        )
+                        for eid, profs in new_profiles.items():
+                            self._profiles[eid] = [
+                                p.to_dict() for p in profs
+                            ]
+                            await storage.save_profile(self.hass, {
+                                "entity_id": eid,
+                                "profiles": self._profiles[eid],
+                            })
+
+                        # Discover rules involving the new entities
+                        window = self.config_entry.data.get(
+                            "sequence_window", 60
+                        )
+                        new_rules = discover_sequence_rules(
+                            new_history, missing, window
+                        )
+                        self._sequence_rules.extend(
+                            r.to_dict() for r in new_rules
+                        )
+                        await storage.save_sequence_rules(
+                            self.hass, self._sequence_rules
+                        )
+                        _LOGGER.info(
+                            "Built %d profiles and %d rules for new entities",
+                            len(new_profiles),
+                            len(new_rules),
+                        )
                 else:
                     # Build fresh from history
                     full_history = (

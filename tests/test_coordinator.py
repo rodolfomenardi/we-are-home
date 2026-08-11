@@ -170,13 +170,15 @@ async def test_async_update_data_loads_stored_profiles(
     coord = WeAreHomeCoordinator(hass, make_entry())
     result = await coord._async_update_data()  # noqa: SLF001
 
-    assert result["profiles_loaded"] == 1
+    # light.a loaded from storage + light.b bootstrapped (no history → COLD)
+    assert result["profiles_loaded"] == 2
     assert result["profiles_ready"] == 1
     assert result["sequence_rules"] == 1
     assert result["last_learning"] is not None
     # Wrapper unwrapped: values are lists of profile dicts, not wrappers
     assert isinstance(coord._profiles["light.a"], list)  # noqa: SLF001
     assert coord._profiles["light.a"][0]["confidence"] == 0.9  # noqa: SLF001
+    assert "light.b" in coord._profiles  # noqa: SLF001 — bootstrapped
     assert coord.profiles_ready == 1
     assert coord.sequence_rules_count == 1
 
@@ -198,7 +200,7 @@ async def test_async_update_data_stored_below_confidence(
     )
     coord = WeAreHomeCoordinator(hass, make_entry())
     result = await coord._async_update_data()  # noqa: SLF001
-    assert result["profiles_loaded"] == 1
+    assert result["profiles_loaded"] == 2  # light.a from storage + light.b bootstrapped
     assert result["profiles_ready"] == 0
 
 
@@ -214,8 +216,8 @@ async def test_async_update_data_stored_legacy_flat_profile(
     )
     coord = WeAreHomeCoordinator(hass, make_entry())
     result = await coord._async_update_data()  # noqa: SLF001
-    assert result["profiles_loaded"] == 1
-    assert result["profiles_ready"] == 1
+    assert result["profiles_loaded"] == 2  # light.a from storage + light.b bootstrapped
+    assert result["profiles_ready"] == 1  # only light.a is ready; light.b COLD
 
 
 # ---------------------------------------------------------------------------

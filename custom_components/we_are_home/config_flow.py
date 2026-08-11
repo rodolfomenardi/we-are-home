@@ -173,6 +173,7 @@ class WeAreHomeOptionsFlow(config_entries.OptionsFlow):
                 )
                 new_entities = set(entities)
                 removed = old_entities - new_entities
+                added = new_entities - old_entities
                 if removed:
                     _LOGGER.info(
                         "Entities removed from config: %s. "
@@ -181,7 +182,21 @@ class WeAreHomeOptionsFlow(config_entries.OptionsFlow):
                         "deactivated.",
                         ", ".join(sorted(removed)),
                     )
+                if added:
+                    _LOGGER.info(
+                        "New entities added to config: %s. "
+                        "Learning will begin on next coordinator cycle.",
+                        ", ".join(sorted(added)),
+                    )
 
+                # Update entry.data directly so the coordinator and
+                # simulation pick up the new configuration.  The
+                # OptionsFlow normally writes to entry.options, but
+                # the rest of the code reads from entry.data.
+                self.hass.config_entries.async_update_entry(
+                    self._config_entry, data=user_input
+                )
+                # Also write to options to trigger the reload listener.
                 return self.async_create_entry(data=user_input)
 
         current = {**self._config_entry.data, **self._config_entry.options}

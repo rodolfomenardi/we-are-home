@@ -119,6 +119,7 @@ async def test_options_flow_creates_entry(hass):
     entry = MockConfigEntry(
         domain=DOMAIN, data={CONF_ENTITIES: ["light.a"]}
     )
+    entry.add_to_hass(hass)
     result = await make_options_flow(hass, entry).async_step_init(
         user_input={CONF_ENTITIES: ["switch.tv"]}
     )
@@ -143,6 +144,7 @@ async def test_options_flow_removed_entities_logged(hass, caplog):
         domain=DOMAIN,
         data={CONF_ENTITIES: ["light.a", "light.b", "switch.tv"]},
     )
+    entry.add_to_hass(hass)
     result = await make_options_flow(hass, entry).async_step_init(
         user_input={CONF_ENTITIES: ["light.a"]}
     )
