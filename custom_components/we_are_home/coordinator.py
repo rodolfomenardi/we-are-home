@@ -132,6 +132,24 @@ class WeAreHomeCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                         len(stored_rules),
                     )
 
+                    # Drop profiles for entities no longer in the config
+                    # (stale storage leftovers).  Their rules are already
+                    # cleaned up by the OptionsFlow.
+                    stale = [
+                        eid
+                        for eid in self._profiles
+                        if eid not in entities
+                    ]
+                    if stale:
+                        for eid in stale:
+                            del self._profiles[eid]
+                        _LOGGER.info(
+                            "Dropped %d stale profiles for entities "
+                            "removed from config: %s",
+                            len(stale),
+                            ", ".join(sorted(stale)),
+                        )
+
                     # Detect entities added since last config (they have
                     # no stored profiles yet).  Build initial profiles
                     # from full recorder history so they are usable

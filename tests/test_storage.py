@@ -69,6 +69,20 @@ async def test_load_profile_missing_file(isolated_hass):
     assert await storage.load_profile(isolated_hass, "light.sala") is None
 
 
+async def test_delete_profile(isolated_hass):
+    """delete_profile removes the entity's profile file."""
+    profile = {"entity_id": "light.sala", "confidence": 0.7, "slots": []}
+    await storage.save_profile(isolated_hass, profile)
+    assert await storage.load_profile(isolated_hass, "light.sala") == profile
+    await storage.delete_profile(isolated_hass, "light.sala")
+    assert await storage.load_profile(isolated_hass, "light.sala") is None
+
+
+async def test_delete_profile_missing_is_noop(isolated_hass):
+    """Deleting a nonexistent profile does not raise."""
+    await storage.delete_profile(isolated_hass, "light.inexistente")
+
+
 async def test_load_all_profiles_empty(isolated_hass):
     """An empty profiles dir yields an empty dict."""
     assert await storage.load_all_profiles(isolated_hass) == {}

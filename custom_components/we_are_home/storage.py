@@ -128,6 +128,20 @@ async def save_profile(hass: HomeAssistant, profile: dict) -> None:
     await _write_json(hass, f"profiles/{filename}", profile)
 
 
+async def delete_profile(hass: HomeAssistant, entity_id: str) -> None:
+    """Delete a single entity profile from storage."""
+    base = await ensure_storage_dir(hass)
+    filename = _sanitize_filename(entity_id)
+    filepath = os.path.join(base, "profiles", filename)
+
+    def _delete() -> None:
+        if os.path.exists(filepath):
+            os.remove(filepath)
+            _LOGGER.info("Deleted profile: %s", entity_id)
+
+    await hass.async_add_executor_job(_delete)
+
+
 async def load_all_profiles(hass: HomeAssistant) -> dict[str, dict]:
     """Load all profiles from storage/profiles/.
 

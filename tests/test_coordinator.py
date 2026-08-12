@@ -204,6 +204,34 @@ async def test_async_update_data_stored_below_confidence(
     assert result["profiles_ready"] == 0
 
 
+async def test_async_update_data_drops_stale_profiles(
+    hass, patch_storage, no_recent_changes
+):
+    """Stored profiles for entities removed from config are dropped."""
+    patch_storage(
+        load_all_profiles=AsyncMock(
+            return_value={
+                "light.a": {
+                    "entity_id": "light.a",
+                    "profiles": [profile_dict()],
+                },
+                "light.removed": {
+                    "entity_id": "light.removed",
+                    "profiles": [profile_dict()],
+                },
+            }
+        ),
+        load_sequence_rules=AsyncMock(return_value=[]),
+    )
+    coord = WeAreHomeCoordinator(hass, make_entry())
+    result = await coord._async_update_data()  # noqa: SLF001
+
+    # light.removed is not in the config → dropped; light.b bootstrapped
+    assert "light.removed" not in coord._profiles  # noqa: SLF001
+    assert set(coord._profiles) == {"light.a", "light.b"}  # noqa: SLF001
+    assert result["profiles_loaded"] == 2
+
+
 async def test_async_update_data_stored_legacy_flat_profile(
     hass, patch_storage, no_recent_changes
 ):

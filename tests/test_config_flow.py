@@ -1,12 +1,14 @@
 """Tests for the config and options flows."""
 
 import logging
+from unittest.mock import AsyncMock
 
 import pytest
 import voluptuous as vol
 from homeassistant import data_entry_flow
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
+from custom_components.we_are_home import storage
 from custom_components.we_are_home.config_flow import (
     WeAreHomeConfigFlow,
     WeAreHomeOptionsFlow,
@@ -18,6 +20,24 @@ from custom_components.we_are_home.const import (
     DEFAULT_NAME,
     DOMAIN,
 )
+
+
+@pytest.fixture
+def patch_storage(monkeypatch):
+    """Patch storage functions used by the options flow."""
+
+    def _patch(**overrides):
+        defaults = {
+            "delete_profile": AsyncMock(),
+            "load_sequence_rules": AsyncMock(return_value=[]),
+            "save_sequence_rules": AsyncMock(),
+        }
+        defaults.update(overrides)
+        for name, mock in defaults.items():
+            monkeypatch.setattr(storage, name, mock)
+        return defaults
+
+    return _patch
 
 
 def make_flow(hass) -> WeAreHomeConfigFlow:
@@ -137,7 +157,9 @@ async def test_options_flow_no_entities_error(hass):
     assert result["errors"] == {CONF_ENTITIES: "no_entities"}
 
 
-async def test_options_flow_removed_entities_logged(hass, caplog):
+async def test_options_flow_removed_entities_logged(
+    hass, caplog, patch_storage
+):
     """Removing entities logs the exclusion without failing."""
     caplog.set_level(logging.INFO, logger="custom_components.we_are_home.config_flow")
     entry = MockConfigEntry(
@@ -151,6 +173,59 @@ async def test_options_flow_removed_entities_logged(hass, caplog):
     assert result["type"] == data_entry_flow.FlowResultType.CREATE_ENTRY
     assert "Entities removed from config" in caplog.text
     assert "light.b" in caplog.text and "switch.tv" in caplog.text
+
+
+async def test_options_flow_removed_entities_deletes_data(
+    hass, patch_storage
+):
+    """Removing entities deletes their profiles and dependent rules."""
+    patched = patch_storage(
+        load_sequence_rules=AsyncMock(
+            return_value=[
+                {
+                    "id": "light.a(on)→light.b(on)",
+                    "source_entity": "light.a",
+                    "source_state": "on",
+                    "target_entity": "light.b",
+                },
+                {
+                    "id": "light.b(on)→switch.tv(on)",
+                    "source_entity": "light.b",
+                    "source_state": "on",
+                    "target_entity": "switch.tv",
+                },
+                {
+                    "id": "light.a(on)→light.c(on)",
+                    "source_entity": "light.a",
+                    "source_state": "on",
+                    "target_entity": "light.c",
+                },
+            ]
+        )
+    )
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data={CONF_ENTITIES: ["light.a", "light.b", "switch.tv"]},
+    )
+    entry.add_to_hass(hass)
+    result = await make_options_flow(hass, entry).async_step_init(
+        user_input={CONF_ENTITIES: ["light.a", "light.c"]}
+    )
+    assert result["type"] == data_entry_flow.FlowResultType.CREATE_ENTRY
+
+    # Profiles deleted for both removed entities
+    assert patched["delete_profile"].await_count == 2
+    deleted = [
+        call.args[1] for call in patched["delete_profile"].await_args_list
+    ]
+    assert set(deleted) == {"light.b", "switch.tv"}
+
+    # Rules referencing removed entities are dropped; the light.a→light.c
+    # rule survives (light.c is still configured).
+    patched["save_sequence_rules"].assert_awaited_once()
+    kept = patched["save_sequence_rules"].await_args.args[1]
+    assert len(kept) == 1
+    assert kept[0]["id"] == "light.a(on)→light.c(on)"
 
 
 def test_get_options_flow_returns_options_flow():

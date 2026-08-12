@@ -175,12 +175,38 @@ class WeAreHomeOptionsFlow(config_entries.OptionsFlow):
                 removed = old_entities - new_entities
                 added = new_entities - old_entities
                 if removed:
+                    from . import storage
+
+                    removed_list = sorted(removed)
+
+                    # Delete profile files
+                    for entity_id in removed_list:
+                        await storage.delete_profile(
+                            self.hass, entity_id
+                        )
+
+                    # Remove sequence rules referencing removed entities
+                    rules = await storage.load_sequence_rules(
+                        self.hass
+                    )
+                    kept_rules = [
+                        r
+                        for r in rules
+                        if r.get("source_entity") not in removed
+                        and r.get("target_entity") not in removed
+                    ]
+                    dropped = len(rules) - len(kept_rules)
+                    if dropped:
+                        await storage.save_sequence_rules(
+                            self.hass, kept_rules
+                        )
+
                     _LOGGER.info(
                         "Entities removed from config: %s. "
-                        "Their profiles are preserved but excluded from "
-                        "simulation; dependent SequenceRules will be "
-                        "deactivated.",
-                        ", ".join(sorted(removed)),
+                        "Deleted %d profiles and %d sequence rules.",
+                        ", ".join(removed_list),
+                        len(removed_list),
+                        dropped,
                     )
                 if added:
                     _LOGGER.info(
