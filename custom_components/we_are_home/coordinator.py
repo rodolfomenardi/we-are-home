@@ -132,9 +132,9 @@ class WeAreHomeCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                         len(stored_rules),
                     )
 
-                    # Drop profiles for entities no longer in the config
-                    # (stale storage leftovers).  Their rules are already
-                    # cleaned up by the OptionsFlow.
+                    # Purge profiles for entities no longer in the config
+                    # (stale storage leftovers, e.g. entities removed before
+                    # the OptionsFlow cleanup existed).
                     stale = [
                         eid
                         for eid in self._profiles
@@ -142,12 +142,37 @@ class WeAreHomeCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     ]
                     if stale:
                         for eid in stale:
+                            await storage.delete_profile(
+                                self.hass, eid
+                            )
                             del self._profiles[eid]
                         _LOGGER.info(
-                            "Dropped %d stale profiles for entities "
+                            "Purged %d stale profiles for entities "
                             "removed from config: %s",
                             len(stale),
                             ", ".join(sorted(stale)),
+                        )
+
+                    # Drop sequence rules referencing entities that are
+                    # no longer configured, and persist the cleanup.
+                    kept_rules = [
+                        r
+                        for r in self._sequence_rules
+                        if r.get("source_entity") in entities
+                        and r.get("target_entity") in entities
+                    ]
+                    dropped_rules = (
+                        len(self._sequence_rules) - len(kept_rules)
+                    )
+                    if dropped_rules:
+                        self._sequence_rules = kept_rules
+                        await storage.save_sequence_rules(
+                            self.hass, kept_rules
+                        )
+                        _LOGGER.info(
+                            "Purged %d stale sequence rules referencing "
+                            "entities not in config",
+                            dropped_rules,
                         )
 
                     # Detect entities added since last config (they have

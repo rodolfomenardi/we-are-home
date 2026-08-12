@@ -100,6 +100,7 @@ def patch_storage(monkeypatch):
             "load_sequence_rules": AsyncMock(return_value=[]),
             "save_profile": AsyncMock(),
             "save_sequence_rules": AsyncMock(),
+            "delete_profile": AsyncMock(),
             "append_learning_run": AsyncMock(),
         }
         defaults.update(overrides)
@@ -208,7 +209,7 @@ async def test_async_update_data_drops_stale_profiles(
     hass, patch_storage, no_recent_changes
 ):
     """Stored profiles for entities removed from config are dropped."""
-    patch_storage(
+    patched = patch_storage(
         load_all_profiles=AsyncMock(
             return_value={
                 "light.a": {
@@ -221,7 +222,17 @@ async def test_async_update_data_drops_stale_profiles(
                 },
             }
         ),
-        load_sequence_rules=AsyncMock(return_value=[]),
+        load_sequence_rules=AsyncMock(
+            return_value=[
+                rule_dict(),
+                {
+                    "id": "light.a(on)→light.removed(on)",
+                    "source_entity": "light.a",
+                    "source_state": "on",
+                    "target_entity": "light.removed",
+                },
+            ]
+        ),
     )
     coord = WeAreHomeCoordinator(hass, make_entry())
     result = await coord._async_update_data()  # noqa: SLF001
@@ -230,6 +241,20 @@ async def test_async_update_data_drops_stale_profiles(
     assert "light.removed" not in coord._profiles  # noqa: SLF001
     assert set(coord._profiles) == {"light.a", "light.b"}  # noqa: SLF001
     assert result["profiles_loaded"] == 2
+
+    # Profile file purged from disk
+    patched["delete_profile"].assert_awaited_once()
+    assert patched["delete_profile"].await_args.args[1] == "light.removed"
+
+    # Rule referencing the removed entity is dropped and persisted
+    # (first save = purge; later saves come from the new-entity bootstrap)
+    assert [r["id"] for r in coord._sequence_rules] == [  # noqa: SLF001
+        "light.a(on)→light.b(on)"
+    ]
+    first_save = patched["save_sequence_rules"].await_args_list[0]
+    kept = first_save.args[1]
+    assert len(kept) == 1
+    assert kept[0]["id"] == "light.a(on)→light.b(on)"
 
 
 async def test_async_update_data_stored_legacy_flat_profile(
