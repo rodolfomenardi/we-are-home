@@ -18,6 +18,7 @@ from custom_components.we_are_home.models.learner import (
     build_time_profiles,
     discover_sequence_rules,
     incremental_update,
+    normalize_day_group_labels,
 )
 from custom_components.we_are_home.models.sequence_rule import SequenceRule
 from custom_components.we_are_home.models.time_profile import TimeProfile
@@ -179,14 +180,16 @@ def test_auto_detect_passthrough_when_not_seven():
 
 
 def test_auto_detect_merges_identical_days():
-    """Identical daily patterns merge into a single group."""
+    """Identical daily patterns merge into canonical day-class profiles."""
     profiles = [
         _profile_with_single_slot("light.sala", day, 32) for day in range(7)
     ]
     result = auto_detect_day_groups({"light.sala": profiles})
     merged = result["light.sala"]
-    assert len(merged) == 1
-    assert merged[0].total_observations == 7
+    # The pattern applies every day → both classes carry it
+    assert {p.day_group for p in merged} == {"weekday", "weekend"}
+    total = sum(p.total_observations for p in merged)
+    assert total == 7
 
 
 def test_auto_detect_weekday_weekend_split():
@@ -210,6 +213,59 @@ def test_auto_detect_preserves_total_observations():
     result = auto_detect_day_groups({"light.sala": profiles})
     total = sum(p.total_observations for p in result["light.sala"])
     assert total == 7
+
+
+def test_auto_detect_partial_merge_uses_canonical_labels():
+    """Merged groups are labelled weekday/weekend, never numeric."""
+    profiles = [
+        _profile_with_single_slot("light.sala", d, 32)
+        if d < 5
+        else _profile_with_single_slot("light.sala", d, 80)
+        for d in range(7)
+    ]
+    result = auto_detect_day_groups({"light.sala": profiles})
+    groups = {p.day_group for p in result["light.sala"]}
+    assert groups == {"weekday", "weekend"}
+    by_name = {p.day_group: p for p in result["light.sala"]}
+    # Each class keeps only its own days' data
+    assert by_name["weekday"].slots[32].sample_count == 5
+    assert by_name["weekday"].slots[80].sample_count == 0
+    assert by_name["weekend"].slots[80].sample_count == 2
+
+
+def test_normalize_day_group_labels_remaps_numeric():
+    """Legacy numeric first-day labels become weekday/weekend."""
+    weekday_like = TimeProfile(entity_id="light.sala", day_group="0")
+    weekday_like.update_slot(32, is_on=True)
+    weekend_like = TimeProfile(entity_id="light.sala", day_group="5")
+    weekend_like.update_slot(80, is_on=True)
+    normalized = normalize_day_group_labels([weekday_like, weekend_like])
+    by_name = {p.day_group: p for p in normalized}
+    assert set(by_name) == {"weekday", "weekend"}
+    assert by_name["weekday"].slots[32].sample_count == 1
+    assert by_name["weekend"].slots[80].sample_count == 1
+
+
+def test_normalize_day_group_labels_merges_same_class():
+    """Multiple numeric weekday groups merge into one canonical profile."""
+    first = TimeProfile(entity_id="light.sala", day_group="0")
+    first.update_slot(32, is_on=True)
+    second = TimeProfile(entity_id="light.sala", day_group="2")
+    second.update_slot(33, is_on=True)
+    normalized = normalize_day_group_labels([first, second])
+    assert len(normalized) == 1
+    assert normalized[0].day_group == "weekday"
+    assert normalized[0].total_observations == 2
+
+
+def test_normalize_day_group_labels_passthrough():
+    """Already-canonical labels pass through unchanged."""
+    profile = TimeProfile(entity_id="light.sala", day_group="weekend")
+    profile.update_slot(80, is_on=True)
+    normalized = normalize_day_group_labels([profile])
+    assert len(normalized) == 1
+    assert normalized[0].day_group == "weekend"
+    assert normalized[0].total_observations == 1
 
 
 # ---------------------------------------------------------------------------
@@ -399,3 +455,73 @@ def test_incremental_update_updates_existing_rules():
     assert new_rules == len(rules) - 1
     match = next(r for r in rules if r.id == existing_rule.id)
     assert match.occurrence_count > 1
+
+
+def test_incremental_update_uses_real_delays():
+    """Existing rules update with actual per-occurrence delays."""
+    existing = SequenceRule(
+        id="light.a(on)→light.b(on)",
+        source_entity="light.a",
+        source_state="on",
+        target_entity="light.b",
+        target_state="on",
+        mean_delay=60.0,
+        occurrence_count=3,
+    )
+    new_history = {
+        "light.a": [_change(8, 0, "on", day=4), _change(8, 5, "on", day=5)],
+        "light.b": [_change(8, 4, "on", day=4), _change(8, 9, "on", day=5)],
+    }
+    _, rules, _, _ = incremental_update(
+        {}, [existing], new_history, ["light.a", "light.b"], 60
+    )
+    updated = next(r for r in rules if r.id == existing.id)
+    # 3 initial + 2 real occurrences (never the mean repeated N times)
+    assert updated.occurrence_count == 5
+    # EMA(0.3): 60 → 114 → 151.8 as the two 240s delays are observed
+    assert updated.mean_delay == pytest.approx(151.8)
+
+
+def test_incremental_update_discovery_history_accumulates():
+    """Once-daily patterns reach min_occurrences via wider history."""
+    one_cycle = {
+        "light.a": [_change(18, 0, "on", day=1)],
+        "light.b": [_change(18, 2, "on", day=1)],
+    }
+    # A single cycle has 1 occurrence — below the threshold
+    _, rules, _, new_count = incremental_update(
+        {}, [], one_cycle, ["light.a", "light.b"], 60
+    )
+    assert new_count == 0
+    assert rules == []
+
+    # Accumulated history across 3 days crosses the threshold
+    accumulated = dict(one_cycle)
+    for day in (2, 3):
+        accumulated["light.a"].append(_change(18, 0, "on", day=day))
+        accumulated["light.b"].append(_change(18, 2, "on", day=day))
+    _, rules2, _, new_count2 = incremental_update(
+        {}, [], one_cycle, ["light.a", "light.b"], 60,
+        discovery_history=accumulated,
+    )
+    assert new_count2 == 1
+    rule = next(r for r in rules2 if r.id == "light.a(on)→light.b(on)")
+    assert rule.occurrence_count == 3
+
+
+def test_incremental_update_min_occurrences_passthrough(monkeypatch):
+    """min_occurrences reaches the discovery call."""
+    from custom_components.we_are_home.models import learner
+
+    seen: dict[str, int] = {}
+
+    def _fake_discover(history, entities, window, min_occ):
+        seen["min_occ"] = min_occ
+        return []
+
+    monkeypatch.setattr(learner, "discover_sequence_rules", _fake_discover)
+    incremental_update(
+        {}, [], _sequence_history(days=3), ["light.a", "light.b"],
+        60, min_occurrences=5,
+    )
+    assert seen["min_occ"] == 5

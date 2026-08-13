@@ -182,6 +182,22 @@ def build_time_profiles(
 # ---------------------------------------------------------------------------
 
 
+def _merge_profile_into(target: TimeProfile, src: TimeProfile) -> None:
+    """Merge src's observations into target (weighted by sample counts)."""
+    target.total_observations += src.total_observations
+    for i, slot in enumerate(target.slots):
+        src_slot = src.slots[i]
+        weight = src_slot.sample_count
+        if weight > 0:
+            slot.p_on = (
+                slot.p_on * slot.sample_count + src_slot.p_on * weight
+            )
+            slot.sample_count += weight
+            if slot.sample_count > 0:
+                slot.p_on /= slot.sample_count
+    target.recompute_confidence()
+
+
 def auto_detect_day_groups(
     profiles_by_entity: dict[str, list[TimeProfile]],
     threshold: float = DAY_SIMILARITY_THRESHOLD,
@@ -248,66 +264,28 @@ def auto_detect_day_groups(
                 del groups[g2]
                 group_days = list(groups.keys())
 
-        # Build final profiles with merged day_groups
+        # Relabel merged groups to the canonical weekday/weekend classes
+        # and merge same-class groups, so downstream consumers (the
+        # simulator tick and the incremental updater) can always resolve
+        # a profile by day class.  Older numeric first-day labels ("0",
+        # "5") were never resolvable there.  Mixed groups (e.g. empty
+        # days spanning Thu-Sun) are split by day class first.
+        class_groups: dict[str, set[int]] = {}
+        for days in groups.values():
+            for cls, members in (
+                ("weekday", {d for d in days if d < 5}),
+                ("weekend", {d for d in days if d >= 5}),
+            ):
+                if members:
+                    class_groups.setdefault(cls, set()).update(members)
+
         final_profiles: list[TimeProfile] = []
-        for group_name, days in groups.items():
-            # Weighted average of merged slots
-            merged_profile = TimeProfile(
-                entity_id=entity_id, day_group=group_name
-            )
-            total_obs = 0
-            for d in days:
-                src = profiles[d]
-                total_obs += src.total_observations
-                for i, slot in enumerate(merged_profile.slots):
-                    src_slot = src.slots[i]
-                    weight = src_slot.sample_count
-                    if weight > 0:
-                        slot.p_on = (
-                            slot.p_on * slot.sample_count
-                            + src_slot.p_on * weight
-                        )
-                        slot.sample_count += weight
-                        # Normalise after adding
-                        if slot.sample_count > 0:
-                            slot.p_on /= slot.sample_count
-
-            merged_profile.total_observations = total_obs
-            merged_profile.recompute_confidence()
-            final_profiles.append(merged_profile)
-
-        # If no merges happened, keep original but relabel
-        if len(final_profiles) == 7:
-            final_profiles = [
-                TimeProfile(
-                    entity_id=entity_id,
-                    day_group="weekday" if d < 5 else "weekend",
-                    slots=[s for s in profiles[d].slots],
-                    confidence=profiles[d].confidence,
-                    total_observations=profiles[d].total_observations,
-                )
-                for d in ALL_DAYS
-            ]
-            # Merge weekday and weekend separately
-            final_weekday = TimeProfile(entity_id=entity_id, day_group="weekday")
-            final_weekend = TimeProfile(entity_id=entity_id, day_group="weekend")
-            for d in ALL_DAYS:
-                target = final_weekday if d < 5 else final_weekend
-                src = profiles[d]
-                target.total_observations += src.total_observations
-                for i, slot in enumerate(target.slots):
-                    src_slot = src.slots[i]
-                    w = src_slot.sample_count
-                    if w > 0:
-                        slot.p_on = (
-                            slot.p_on * slot.sample_count + src_slot.p_on * w
-                        )
-                        slot.sample_count += w
-                        if slot.sample_count > 0:
-                            slot.p_on /= slot.sample_count
-            final_weekday.recompute_confidence()
-            final_weekend.recompute_confidence()
-            final_profiles = [final_weekday, final_weekend]
+        for cls, days in class_groups.items():
+            profile = TimeProfile(entity_id=entity_id, day_group=cls)
+            for d in sorted(days):
+                _merge_profile_into(profile, profiles[d])
+            final_profiles.append(profile)
+        final_profiles.sort(key=lambda p: p.day_group)
 
         merged[entity_id] = final_profiles
         _LOGGER.debug(
@@ -317,6 +295,35 @@ def auto_detect_day_groups(
         )
 
     return merged
+
+
+def normalize_day_group_labels(
+    profiles: list[TimeProfile],
+) -> list[TimeProfile]:
+    """Remap legacy numeric day-group labels to weekday/weekend classes.
+
+    Older versions labelled merged day groups with their first day
+    ("0", "5", ...), which the simulator tick and incremental updater
+    cannot resolve.  Same-class profiles are merged (weighted by
+    observations) into at most two canonical profiles.
+    """
+    classes: dict[str, TimeProfile] = {}
+    for p in profiles:
+        if p.day_group in ("weekday", "weekend"):
+            cls = p.day_group
+        else:
+            try:
+                cls = "weekday" if int(p.day_group) < 5 else "weekend"
+            except ValueError:
+                cls = "weekday"  # unknown label: fall back to weekday
+        target = classes.get(cls)
+        if target is None:
+            target = TimeProfile(entity_id=p.entity_id, day_group=cls)
+            classes[cls] = target
+        _merge_profile_into(target, p)
+    return [
+        classes[cls] for cls in ("weekday", "weekend") if cls in classes
+    ]
 
 
 # ---------------------------------------------------------------------------
@@ -429,6 +436,49 @@ def discover_sequence_rules(
     return rules
 
 
+def _pair_delays(
+    history_data: dict[str, list[dict]],
+    rule: SequenceRule,
+    window_minutes: int,
+) -> list[float]:
+    """Real A→B delays for one rule within a batch of history.
+
+    Mirrors the discovery scan: every source change of the rule's
+    (entity, state) pairs with every target change after it that falls
+    inside the discovery window.
+    """
+    window = timedelta(minutes=window_minutes)
+
+    def _sorted(entity_id: str, state: str) -> list[dict]:
+        return sorted(
+            (
+                c for c in history_data.get(entity_id, [])
+                if c.get("state") == state
+            ),
+            key=lambda c: c.get("last_changed", ""),
+        )
+
+    sources = _sorted(rule.source_entity, rule.source_state)
+    targets = _sorted(rule.target_entity, rule.target_state)
+
+    delays: list[float] = []
+    for change_a in sources:
+        ts_a = _iso_to_datetime(change_a.get("last_changed", ""))
+        if ts_a is None:
+            continue
+        for change_b in targets:
+            ts_b = _iso_to_datetime(change_b.get("last_changed", ""))
+            if ts_b is None:
+                continue
+            delay = (ts_b - ts_a).total_seconds()
+            if delay > window.total_seconds():
+                break  # targets are sorted; later ones are further out
+            if delay <= 0:
+                continue
+            delays.append(delay)
+    return delays
+
+
 # ---------------------------------------------------------------------------
 # Incremental Update
 # ---------------------------------------------------------------------------
@@ -440,6 +490,8 @@ def incremental_update(
     new_history: dict[str, list[dict]],
     entities: list[str],
     window_minutes: int = 60,
+    min_occurrences: int = 3,
+    discovery_history: dict[str, list[dict]] | None = None,
 ) -> tuple[
     dict[str, list[TimeProfile]],
     list[SequenceRule],
@@ -456,6 +508,9 @@ def incremental_update(
         new_history: New state changes since last update.
         entities: All monitored entities.
         window_minutes: Discovery window for sequence rules.
+        min_occurrences: Minimum occurrences to create a rule.
+        discovery_history: Wider history for rule discovery (e.g. changes
+            accumulated across cycles); defaults to new_history.
 
     Returns:
         Tuple of (updated_profiles, updated_rules, new_observations, new_rules_count).
@@ -510,24 +565,31 @@ def incremental_update(
 
             new_observations += 1
 
-    # Discover new rules and update existing ones
+    # Discover new rules and update existing ones.  Discovery runs over
+    # a wider history when available (the coordinator accumulates recent
+    # changes across cycles) so patterns occurring once per cycle can
+    # still reach min_occurrences; profile updates always use only the
+    # new history.
+    discovery_history = discovery_history or new_history
     new_rules = discover_sequence_rules(
-        new_history, entities, window_minutes
+        discovery_history, entities, window_minutes, min_occurrences
     )
 
     # Merge new rules with existing
     existing_by_id = {r.id: r for r in existing_rules}
     new_rules_count = 0
 
+    # Update existing rules with the real per-occurrence delays observed
+    # in the new history — never the batch mean repeated N times, which
+    # would collapse the variance estimate and over-weight one value.
+    for existing in existing_rules:
+        for delay in _pair_delays(
+            new_history, existing, window_minutes
+        ):
+            existing.update_occurrence(delay, EMA_ALPHA)
+
     for new_rule in new_rules:
-        if new_rule.id in existing_by_id:
-            # Update existing rule occurrences
-            existing = existing_by_id[new_rule.id]
-            for delay in [
-                new_rule.mean_delay
-            ] * new_rule.occurrence_count:
-                existing.update_occurrence(delay, EMA_ALPHA)
-        else:
+        if new_rule.id not in existing_by_id:
             existing_by_id[new_rule.id] = new_rule
             new_rules_count += 1
 

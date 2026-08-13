@@ -16,6 +16,7 @@ DEFAULT_RANDOM_SEED = None
 # Learning model parameters
 EMA_ALPHA = 0.3  # exponential moving average weight for new data
 DAY_SIMILARITY_THRESHOLD = 0.15  # Jensen-Shannon divergence max for merging days
+RECENT_HISTORY_DAYS = 7  # rolling history kept for sequence rule discovery
 MIN_STATE_DURATION = 5  # seconds - filters out transient states (motion sensors)
 MIN_OBSERVATIONS_COLD = 0
 MIN_OBSERVATIONS_WARM = 3

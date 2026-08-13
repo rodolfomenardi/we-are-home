@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime, timedelta
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
@@ -20,16 +20,23 @@ from homeassistant.helpers.update_coordinator import (
 from .const import (
     DEFAULT_LEARNING_INTERVAL,
     DEFAULT_MIN_CONFIDENCE,
+    DEFAULT_SEQUENCE_MIN_OCCURRENCES,
     DOMAIN,
+    RECENT_HISTORY_DAYS,
 )
 from . import history_reader, storage
 from .models.learner import (
     auto_detect_day_groups,
     build_time_profiles,
     discover_sequence_rules,
-    incremental_update,
+    normalize_day_group_labels,
 )
 from .models.sequence_rule import SequenceRule
+
+if TYPE_CHECKING:
+    # Type-checking only; the runtime import stays lazy inside
+    # _get_simulation() to avoid circular imports.
+    from .simulator import SimulationEngine
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -55,6 +62,7 @@ class WeAreHomeCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self.config_entry = entry
         self._profiles: dict[str, list[dict]] = {}
         self._sequence_rules: list[dict] = []
+        self._recent_history: dict[str, list[dict]] = {}
         self._last_learning: datetime | None = None
 
         self.profiles_loaded: int = 0
@@ -75,6 +83,9 @@ class WeAreHomeCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         entities = self.config_entry.data.get("entities", [])
         if not entities:
             return {"profiles_loaded": 0, "profiles_ready": 0}
+        min_occurrences = self.config_entry.data.get(
+            "sequence_min_occurrences", DEFAULT_SEQUENCE_MIN_OCCURRENCES
+        )
 
         cycle_start = datetime.now()
         is_first_run = not self._profiles
@@ -131,6 +142,36 @@ class WeAreHomeCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                         len(stored_profiles),
                         len(stored_rules),
                     )
+
+                    # Heal legacy numeric day-group labels: older versions
+                    # labelled merged groups "0"/"5", which the simulator
+                    # cannot resolve.  Remap to weekday/weekend and persist
+                    # so the fix survives reloads.
+                    healed_any = False
+                    for eid, p_list in self._profiles.items():
+                        if any(
+                            isinstance(p, dict)
+                            and str(p.get("day_group", "")).isdigit()
+                            for p in p_list
+                        ):
+                            from .models.time_profile import TimeProfile
+                            healed = normalize_day_group_labels(
+                                [TimeProfile.from_dict(p) for p in p_list]
+                            )
+                            self._profiles[eid] = [
+                                p.to_dict() for p in healed
+                            ]
+                            healed_any = True
+                    if healed_any:
+                        for eid, profs in self._profiles.items():
+                            await storage.save_profile(self.hass, {
+                                "entity_id": eid, "profiles": profs,
+                            })
+                        _LOGGER.info(
+                            "Healed %d profiles with legacy numeric "
+                            "day-group labels",
+                            len(self._profiles),
+                        )
 
                     # Purge profiles for entities no longer in the config
                     # (stale storage leftovers, e.g. entities removed before
@@ -216,7 +257,7 @@ class WeAreHomeCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                             "sequence_window", 60
                         )
                         new_rules = discover_sequence_rules(
-                            new_history, missing, window
+                            new_history, missing, window, min_occurrences
                         )
                         self._sequence_rules.extend(
                             r.to_dict() for r in new_rules
@@ -257,7 +298,7 @@ class WeAreHomeCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                         "sequence_window", 60
                     )
                     raw_rules = discover_sequence_rules(
-                        full_history, entities, window
+                        full_history, entities, window, min_occurrences
                     )
                     self._sequence_rules = [
                         r.to_dict() for r in raw_rules
@@ -287,6 +328,26 @@ class WeAreHomeCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     SequenceRule.from_dict(r) for r in self._sequence_rules
                 ]
 
+                # Accumulate recent history across cycles so rule
+                # discovery can see patterns occurring once per cycle
+                # (e.g. daily) and reach min_occurrences.
+                for eid, changes in new_history.items():
+                    self._recent_history.setdefault(eid, []).extend(
+                        changes
+                    )
+                cutoff = (
+                    datetime.now() - timedelta(days=RECENT_HISTORY_DAYS)
+                ).isoformat()
+                for eid in list(self._recent_history):
+                    kept = [
+                        c for c in self._recent_history[eid]
+                        if c.get("last_changed", "") >= cutoff
+                    ]
+                    if kept:
+                        self._recent_history[eid] = kept
+                    else:
+                        del self._recent_history[eid]
+
                 window = self.config_entry.data.get(
                     "sequence_window", 60
                 )
@@ -296,6 +357,8 @@ class WeAreHomeCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     new_history,
                     entities,
                     window,
+                    min_occurrences=min_occurrences,
+                    discovery_history=self._recent_history,
                 )
 
                 self._profiles = {

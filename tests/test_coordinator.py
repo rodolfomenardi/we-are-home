@@ -2,7 +2,7 @@
 
 from datetime import timedelta
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from homeassistant.helpers.update_coordinator import UpdateFailed
@@ -273,6 +273,42 @@ async def test_async_update_data_stored_legacy_flat_profile(
     assert result["profiles_ready"] == 1  # only light.a is ready; light.b COLD
 
 
+async def test_async_update_data_heals_legacy_numeric_day_groups(
+    hass, patch_storage, no_recent_changes
+):
+    """Stored numeric day-group labels are remapped to weekday/weekend."""
+    patched = patch_storage(
+        load_all_profiles=AsyncMock(
+            return_value={
+                "light.a": {
+                    "entity_id": "light.a",
+                    "profiles": [
+                        {**profile_dict(day_group="0")},
+                        {**profile_dict(day_group="5")},
+                    ],
+                }
+            }
+        ),
+        load_sequence_rules=AsyncMock(return_value=[]),
+    )
+    coord = WeAreHomeCoordinator(hass, make_entry())
+    await coord._async_update_data()  # noqa: SLF001
+
+    groups = {p["day_group"] for p in coord._profiles["light.a"]}  # noqa: SLF001
+    assert groups == {"weekday", "weekend"}
+    # Healed profiles persisted back to storage
+    saved = [
+        call.args[1]
+        for call in patched["save_profile"].await_args_list
+        if call.args[1]["entity_id"] == "light.a"
+    ]
+    assert saved
+    assert {p["day_group"] for p in saved[-1]["profiles"]} == {
+        "weekday",
+        "weekend",
+    }
+
+
 # ---------------------------------------------------------------------------
 # Fresh-build path
 # ---------------------------------------------------------------------------
@@ -302,6 +338,36 @@ async def test_async_update_data_builds_fresh(hass, patch_storage, monkeypatch):
     assert "light.a(on)→light.b(on)" in rule_ids
     assert patched["save_profile"].await_count == 2
     assert patched["save_sequence_rules"].await_count == 1
+
+
+async def test_async_update_data_plumbs_min_occurrences(
+    hass, patch_storage, monkeypatch
+):
+    """sequence_min_occurrences from config reaches rule discovery."""
+    patch_storage()
+    monkeypatch.setattr(
+        history_reader,
+        "get_multi_entity_history",
+        AsyncMock(return_value=three_day_history()),
+    )
+    monkeypatch.setattr(
+        history_reader, "get_recent_state_changes", AsyncMock(return_value={})
+    )
+    from custom_components.we_are_home import coordinator as coordinator_mod
+
+    mock_discover = MagicMock(return_value=[])
+    monkeypatch.setattr(
+        coordinator_mod, "discover_sequence_rules", mock_discover
+    )
+
+    coord = WeAreHomeCoordinator(
+        hass, make_entry(sequence_min_occurrences=5)
+    )
+    await coord._async_update_data()  # noqa: SLF001
+
+    args = mock_discover.call_args.args
+    assert args[2] == 60  # window
+    assert args[3] == 5  # min_occurrences from config
 
 
 # ---------------------------------------------------------------------------
@@ -340,6 +406,47 @@ async def test_async_update_data_incremental(hass, patch_storage, monkeypatch):
     assert patched["save_profile"].await_count == 1
     assert patched["append_learning_run"].await_count == 1
     assert coord._last_learning is not None  # noqa: SLF001
+
+
+async def test_async_update_data_accumulates_recent_history(
+    hass, patch_storage, monkeypatch
+):
+    """Incremental cycles feed a rolling history for rule discovery."""
+    patch_storage()
+    # Dates within the 7-day rolling window (today = 2026-08-13)
+    cycle_1 = {
+        "light.a": [{"last_changed": "2026-08-10T18:00:00", "state": "on"}],
+        "light.b": [{"last_changed": "2026-08-10T18:02:00", "state": "on"}],
+    }
+    cycle_2 = {
+        "light.a": [{"last_changed": "2026-08-11T18:00:00", "state": "on"}],
+        "light.b": [{"last_changed": "2026-08-11T18:02:00", "state": "on"}],
+    }
+    monkeypatch.setattr(
+        history_reader,
+        "get_recent_state_changes",
+        AsyncMock(side_effect=[cycle_1, cycle_2]),
+    )
+    from custom_components.we_are_home.models import learner
+
+    mock_discover = MagicMock(return_value=[])
+    monkeypatch.setattr(learner, "discover_sequence_rules", mock_discover)
+
+    coord = WeAreHomeCoordinator(hass, make_entry())
+    coord._profiles = {  # noqa: SLF001
+        "light.a": [profile_dict()],
+        "light.b": [profile_dict()],
+    }
+    coord._sequence_rules = [rule_dict()]  # noqa: SLF001
+
+    await coord._async_update_data()  # noqa: SLF001
+    await coord._async_update_data()  # noqa: SLF001
+
+    # The buffer accumulated both cycles
+    assert len(coord._recent_history["light.a"]) == 2  # noqa: SLF001
+    # Discovery in the second cycle saw the accumulated history
+    last_history = mock_discover.call_args.args[0]
+    assert len(last_history["light.a"]) == 2
 
 
 # ---------------------------------------------------------------------------

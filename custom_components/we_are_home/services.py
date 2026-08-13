@@ -16,6 +16,7 @@ from homeassistant.helpers import config_validation as cv
 
 from . import storage
 from .const import (
+    DEFAULT_SEQUENCE_MIN_OCCURRENCES,
     DOMAIN,
     SERVICE_GET_PROFILE,
     SERVICE_LIST_RULES,
@@ -214,6 +215,7 @@ async def _handle_train(
     from .models.learner import (
         auto_detect_day_groups,
         build_time_profiles,
+        discover_sequence_rules,
         incremental_update,
     )
 
@@ -227,6 +229,18 @@ async def _handle_train(
         coordinator._profiles = {  # noqa: SLF001
             eid: [p.to_dict() for p in profs] for eid, profs in raw.items()
         }
+
+        # Rebuild sequence rules from the same full history
+        window = coordinator.config_entry.data.get("sequence_window", 60)
+        min_occurrences = coordinator.config_entry.data.get(
+            "sequence_min_occurrences", DEFAULT_SEQUENCE_MIN_OCCURRENCES
+        )
+        raw_rules = discover_sequence_rules(
+            history, list(target_entities), window, min_occurrences
+        )
+        coordinator._sequence_rules = [  # noqa: SLF001
+            r.to_dict() for r in raw_rules
+        ]
     else:
         from .models.time_profile import TimeProfile
         from .models.sequence_rule import SequenceRule
@@ -240,9 +254,13 @@ async def _handle_train(
             for r in coordinator._sequence_rules  # noqa: SLF001
         ]
         window = coordinator.config_entry.data.get("sequence_window", 60)
+        min_occurrences = coordinator.config_entry.data.get(
+            "sequence_min_occurrences", DEFAULT_SEQUENCE_MIN_OCCURRENCES
+        )
         _, updated, obs, new = incremental_update(
             profiles_raw, rules_raw, history,
             list(target_entities), window,
+            min_occurrences=min_occurrences,
         )
         coordinator._profiles = {  # noqa: SLF001
             eid: [p.to_dict() for p in profs]

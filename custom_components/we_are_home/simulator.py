@@ -89,6 +89,11 @@ class SimulationEngine:
         self._commands_sent = 0
         self._running = True
 
+        # Optional reproducibility seed
+        seed = self.config_entry.data.get("random_seed")
+        if seed is not None:
+            random.seed(seed)
+
         # Schedule periodic tick
         simulation_interval = self.config_entry.data.get(
             "simulation_interval", DEFAULT_SIMULATION_INTERVAL
@@ -196,7 +201,19 @@ class SimulationEngine:
                             break
 
             if profile is None:
-                continue
+                # No profile matches this day class (e.g. a single-group
+                # entity learned as weekday-only): fall back to the first
+                # available profile rather than skipping the entity.
+                if entity_profiles and isinstance(entity_profiles[0], dict):
+                    profile = entity_profiles[0]
+                    _LOGGER.debug(
+                        "No %s profile for %s; using %s fallback",
+                        day_group,
+                        entity_id,
+                        profile.get("day_group"),
+                    )
+                else:
+                    continue
 
             # Check confidence threshold
             confidence = profile.get("confidence", 0)
@@ -257,6 +274,13 @@ class SimulationEngine:
                     rand_val,
                 )
                 await self._send_command(entity_id, SERVICE_TURN_OFF)
+                self._boost_manager.trigger(
+                    entity_id,
+                    "off",
+                    profiles,
+                    boost_factor,
+                    self.coordinator,
+                )
                 commands_sent += 1
 
         self._commands_sent += commands_sent

@@ -1,5 +1,6 @@
 """Tests for the simulation engine and boost manager."""
 
+import random
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
@@ -301,6 +302,47 @@ async def test_tick_fires_command_events():
             "reason": "simulation_tick",
         },
     )
+
+
+async def test_tick_off_triggers_off_rules():
+    """Turning an entity off triggers rules with source_state=off."""
+    hass = make_hass({"light.sala": "on"})
+    profiles = {"light.sala": profile_dict(p_on=0.0)}
+    engine, _ = make_engine(hass, make_entry(), profiles)
+    engine._boost_manager = MagicMock()  # noqa: SLF001
+    engine._boost_manager.get_boost.return_value = 1.0
+    await engine.start()
+    await engine.tick()
+    engine._boost_manager.trigger.assert_called_once_with(  # noqa: SLF001
+        "light.sala", "off", profiles, 2.0, engine.coordinator
+    )
+
+
+async def test_tick_falls_back_when_day_class_missing(monkeypatch):
+    """Entities with only a weekday profile still simulate on weekends."""
+    import custom_components.we_are_home.simulator as sim_mod
+
+    class FakeDateTime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return cls(2026, 8, 9, 20, 0, tzinfo=UTC)  # Sunday 20:00
+
+    monkeypatch.setattr(sim_mod, "datetime", FakeDateTime)
+    hass = make_hass({"light.sala": "off"})
+    profiles = {"light.sala": [profile_dict(p_on=1.0)[0]]}  # weekday only
+    engine, _ = make_engine(hass, make_entry(), profiles)
+    await engine.start()
+    assert await engine.tick() == 1
+
+
+async def test_start_applies_random_seed():
+    """A configured random_seed makes tick sampling reproducible."""
+    hass = make_hass({"light.sala": "off"})
+    engine, _ = make_engine(hass, make_entry(random_seed=123))
+    await engine.start()
+    first = random.random()
+    random.seed(123)
+    assert random.random() == first
 
 
 # ---------------------------------------------------------------------------
